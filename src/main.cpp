@@ -183,7 +183,7 @@ void loop() {
             txValue = Serial2.read();
             if (txValue == '\n' || txValue == '\r') {
                 if (data.length() > 0) {
-                    Serial.println("Read from UART: " + data);
+                    // Serial.println("Read from UART: " + data);
                     parseFunctionUART(data.c_str());  // Deal with the incoming data                    
                     data = "";
                 }
@@ -295,7 +295,7 @@ void parseFunctionUART (const char* data)
 
         else {
             // Disconnect command
-            disconnect_all_clients();
+            deviceConnected = disconnect_all_clients();
         }
     }
 
