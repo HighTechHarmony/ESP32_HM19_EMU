@@ -159,7 +159,8 @@ void setup() {
 
 void loop() {
 
-    String data;
+    String data;  // A buffer to collect data from the UART before it is sent out to BLE
+    String chunk;
 
     // Workaround to handle device connections and disconnections because callbacks don't work
     deviceConnected = (pServer->getConnectedCount() > 0);
@@ -167,7 +168,7 @@ void loop() {
     if (deviceConnected != oldDeviceConnected) {
         if (deviceConnected) {
             Serial.println("Client connected");
-
+            // We don't send a message here because the onSubscribe BLE callback will do it
         }
         else {
             Serial.println("Client disconnected");
@@ -176,24 +177,28 @@ void loop() {
         oldDeviceConnected = deviceConnected;
     }
 
-    if (deviceConnected) {
-        /* Read the value of the readPin and send this to the characteristic */
-        while (Serial2.available()) {
+    /* Get data from the UART, parse it, and send it to BLE   */
+    while (Serial2.available()) {
+    // Apparently Serial2.read() can be told to return only one character at time 
+    // based on the type of the variable it is assigned to, who knew?
+    char c = Serial2.read();  
+    if (c == '\n') {  // If we have a complete line, let's look at it
+      if (data.length() > 0) {
+        Serial.println("Read from UART: " + data);
+        parseFunctionUART(data.c_str());  // Parse the data and (possibly) send it to BLE        
+        data = "";  // Clear the buffer
 
-            txValue = Serial2.read();
-            if (txValue == '\n' || txValue == '\r') {
-                if (data.length() > 0) {
-                    // Serial.println("Read from UART: " + data);
-                    parseFunctionUART(data.c_str());  // Deal with the incoming data                    
-                    data = "";
-                }
-            } else {
-                data += txValue;
-            }
-        }
+        delay(10); // Just a safeguard, as bluetooth stack could go into congestion, if too many packets are sent
+      }
       
-       delay(10); // bluetooth stack will go into congestion, if too many packets are sent
-	}
+      data = "";  // Nothing of interest, clear the buffer and move on
+    } else {
+      data += c;  // Append this character to the buffer string
+    }
+  }
+      
+    
+	// }
 
     // else {
     //     Serial.println("No device connected");
