@@ -12,6 +12,9 @@
 #include <NimBLEUtils.h>
 #include <NimBLE2904.h>
 
+// For seeed studio ESP32C3
+#include <HardwareSerial.h>
+
 
 // UUID for the custom service and characteristics
 #define SERVICE_UUID "ffe0"
@@ -53,10 +56,12 @@ bool oldDeviceConnected = false;
 char txValue = 0;
 
 /* U2UXD */
-const int readPin = 16; // Use GPIO number. See ESP32 board pinouts
-const int writePin = 17; // Use GPIO number. See ESP32 board pinouts
+// const int readPin = 16; // Use GPIO number. See ESP32 board pinouts
+// const int writePin = 17; // Use GPIO number. See ESP32 board pinouts
+const int readPin = 7; // For seeed studio ESP32C3
+const int writePin = 6; // For seeed studio ESP32C3
 
-
+HardwareSerial MySerial(0);  // For seeed studio ESP32C3
 
 
 // /* Callbacks for client disconnect & connect events.  */
@@ -65,7 +70,7 @@ const int writePin = 17; // Use GPIO number. See ESP32 board pinouts
 //     {
 //         // Print the client's BLE address to the console
 //         deviceConnected = true;
-//         Serial2.println("OK+CONN");
+//         MySerial.println("OK+CONN");
 //         Serial.print("Client connected. Address: ");
 //         // Serial.println(clientAddressString.c_str());
 //         Serial.println(NimBLEAddress(connection_desc.peer_ota_addr).toString().c_str());
@@ -76,7 +81,7 @@ const int writePin = 17; // Use GPIO number. See ESP32 board pinouts
 //     {
 //         deviceConnected = false;
 //         // Print the client's BLE address to the console
-//         Serial2.println("OK+LOST");
+//         MySerial.println("OK+LOST");
 //         Serial.print("Client disconnected. Address: ");
 //         // Serial.println(clientAddressString.c_str());
 //         Serial.println(NimBLEAddress(connection_desc.peer_ota_addr).toString().c_str());        
@@ -135,7 +140,7 @@ class MyCallbacks : public NimBLECharacteristicCallbacks
 
     void onSubscribe(NimBLECharacteristic* pCharacteristic, ble_gap_conn_desc* connection_desc, uint16_t subValue) {
         Serial.println("Client subscribed to characteristic");
-        Serial2.println("OK+CONN");
+        MySerial.println("OK+CONN");
     };
 
     private:
@@ -151,7 +156,7 @@ void setup() {
 
 
   /* UART2 is used as a bridge to send/receive data over BLE */
-  Serial2.begin(9600, SERIAL_8N1, readPin, writePin);
+  MySerial.begin(9600, SERIAL_8N1, readPin, writePin);
 
   setup_ble_peripheral();
   Serial.println("Waiting for client connection...");
@@ -172,16 +177,16 @@ void loop() {
         }
         else {
             Serial.println("Client disconnected");
-            Serial2.println("OK+LOST");
+            MySerial.println("OK+LOST");
         }
         oldDeviceConnected = deviceConnected;
     }
 
     /* Get data from the UART, parse it, and send it to BLE   */
-    while (Serial2.available()) {
-    // Apparently Serial2.read() can be told to return only one character at time 
+    while (MySerial.available()) {
+    // Apparently MySerial.read() can be told to return only one character at time 
     // based on the type of the variable it is assigned to, who knew?
-    char c = Serial2.read();  
+    char c = MySerial.read();  
     if (c == '\n') {  // If we have a complete line, let's look at it
       if (data.length() > 0) {
         Serial.println("Read from UART: " + data);
@@ -317,7 +322,7 @@ void parseFunctionBLE (const char* data)
     Serial.println(data);
 
     /* Pass this data through to the UART TX */
-    Serial2.print(data);
+    MySerial.print(data);
 }
 
 

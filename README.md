@@ -17,6 +17,9 @@ At this time only very basic functionality is working. Most AT commands are not 
 
 These AT commands should be working:
 
-`AT
-AT+DTY0 (start advertising)
-AT+DTY1 (stop advertising)`
+`AT' (disconnect)
+
+`AT+DTY0` (start advertising)
+
+`AT+DTY1` (stop advertising)
+
