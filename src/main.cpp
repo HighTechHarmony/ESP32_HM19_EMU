@@ -156,7 +156,7 @@ void setup() {
 
 
   /* UART2 is used as a bridge to send/receive data over BLE */
-  MySerial.begin(9600, SERIAL_8N1, RX, TX);
+  MySerial.begin(9600, SERIAL_8N1, RX, TX);   // AKA GPIO D7 and D6 on the Seeed Studio ESP32C3
 
   setup_ble_peripheral();
   Serial.println("Waiting for client connection...");
