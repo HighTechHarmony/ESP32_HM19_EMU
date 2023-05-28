@@ -48,7 +48,7 @@ int disconnect_all_clients();
 bool disable_advertising();
 void parseFunctionBLE (const char* data);
 void parseFunctionUART (const char* data);
-
+bool stringNotEmpty (String mystr);
 
 bool deviceConnected = false;  // Reflects whether there is a device connected or not
 bool advertising = false;  // Reflects whether we are advertising or not
@@ -58,8 +58,8 @@ char txValue = 0;
 /* U2UXD */
 // const int readPin = 16; // Use GPIO number. See ESP32 board pinouts
 // const int writePin = 17; // Use GPIO number. See ESP32 board pinouts
-const int readPin = 7; // For seeed studio ESP32C3
-const int writePin = 6; // For seeed studio ESP32C3
+// const int readPin = 7; // For seeed studio ESP32C3
+// const int writePin = 6; // For seeed studio ESP32C3
 
 HardwareSerial MySerial(0);  // For seeed studio ESP32C3
 
@@ -273,10 +273,16 @@ void setup_ble_peripheral()
 
 }
 
+/* Parses and acts on any in-band AT commands received at the UART.  Otherwise, sends any actual data on to BLE */
 void parseFunctionUART (const char* data)
 {
     Serial.print("parseFunctionUART() Received: ");
     Serial.println(data);
+
+    if (!stringNotEmpty(data)) {
+        // Serial.println("parseFunctionUART() Received empty string");
+        return;
+    }
 
     
     /* See if this is an AT command */    
@@ -384,4 +390,17 @@ int disconnect_all_clients()
 bool disable_advertising()
 {
     return pServer->stopAdvertising();
+}
+
+
+/* Helper function to determine if a String contains any alphanumeric characters */
+bool stringNotEmpty (String mystr)
+{
+    // Iterate through the string and return true if any character is alphanumeric 
+    for (int i = 0; i < mystr.length(); i++) {
+        if (isAlphaNumeric(mystr.charAt(i))) {
+            return true;
+        }
+    }
+  return false;
 }
