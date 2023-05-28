@@ -156,7 +156,7 @@ void setup() {
 
 
   /* UART2 is used as a bridge to send/receive data over BLE */
-  MySerial.begin(9600, SERIAL_8N1, readPin, writePin);
+  MySerial.begin(9600, SERIAL_8N1, RX, TX);
 
   setup_ble_peripheral();
   Serial.println("Waiting for client connection...");
@@ -165,6 +165,7 @@ void setup() {
 void loop() {
 
     String data;  // A buffer to collect data from the UART before it is sent out to BLE
+    String str;
     String chunk;
 
     // Workaround to handle device connections and disconnections because callbacks don't work
@@ -183,24 +184,32 @@ void loop() {
     }
 
     /* Get data from the UART, parse it, and send it to BLE   */
-    while (MySerial.available()) {
+    // while (MySerial.available()) {
     // Apparently MySerial.read() can be told to return only one character at time 
     // based on the type of the variable it is assigned to, who knew?
-    char c = MySerial.read();  
-    if (c == '\n') {  // If we have a complete line, let's look at it
-      if (data.length() > 0) {
-        Serial.println("Read from UART: " + data);
-        parseFunctionUART(data.c_str());  // Parse the data and (possibly) send it to BLE        
-        data = "";  // Clear the buffer
+    // char c = MySerial.read();
+    // read from port 1, send to port 0:
+    if (MySerial.available()) {
+    str.concat(MySerial.readStringUntil('\r'));
+
+    // Serial.println("Got:" + c);  // Echo the character to the console (for debugging
+    Serial.println("Got:" + str);  // Echo the character to the console (for debugging
+    // if (c == '\n') {  // If we have a complete line, let's look at it
+    //   if (data.length() > 0) {
+        // Serial.println("Read from UART: " + data);
+        // parseFunctionUART(data.c_str());  // Parse the data and (possibly) send it to BLE        
+        parseFunctionUART(str.c_str());  // Parse the data and (possibly) send it to BLE
+        // data = "";  // Clear the buffer
+        str = "";  // Clear the buffer
 
         delay(10); // Just a safeguard, as bluetooth stack could go into congestion, if too many packets are sent
-      }
-      
-      data = "";  // Nothing of interest, clear the buffer and move on
-    } else {
-      data += c;  // Append this character to the buffer string
     }
-  }
+      
+//       data = "";  // Nothing of interest, clear the buffer and move on
+//     } else {
+//       data += c;  // Append this character to the buffer string
+//     }
+//   }
       
     
 	// }
