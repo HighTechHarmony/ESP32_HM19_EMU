@@ -6,9 +6,9 @@ This is an emulator for the DSD TECH HM18/HM19 Bluetooth module, which allows de
 ## Hardware
 This was built and tested on a Seeed Studio ESP32C3.  It uses the following GPIO pins:
 
-GPIO D7: Serial RX (connect to TX on other device)
+GPIO D9: Serial RX (connect to TX on other device)
 
-GPIO D6: Serial TX (connect to RX on other device)
+GPIO D10: Serial TX (connect to RX on other device)
 
 You also need to (at least) connect ground pins on the devices.
 
