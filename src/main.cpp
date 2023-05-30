@@ -14,16 +14,23 @@
 
 // For seeed studio ESP32C3
 #include <HardwareSerial.h>
+#include <EEPROM.h>
 
 
 // UUID for the custom service and characteristics
 #define SERVICE_UUID "ffe0"
 #define CHARACTERISTIC_UUID "ffe1"
 
-// Bluetooth advertised name
-// #define DEVICE_NAME "PKL24-ESP"
+// Set this to 1 to enable advertising at startup, or 0 if it will remain off until commanded on by the UART interface (with AT+DTY0)
+#define DEFAULT_ADVERTISING 1
+#define DEFAULT_DEVICE_NAME "PKL24-ESP"
+#define DEVICE_NAME_ADDRESS 0x00
+#define DEVICE_NAME_LENGTH 32
 
-char deviceName[32] = "PKL24-ESP";
+
+/* Some global variables and objects */
+
+char deviceName[32] = DEFAULT_DEVICE_NAME;
 
 // Characteristic value to be updated periodically
 uint16_t characteristicValue = 0;
@@ -40,26 +47,32 @@ NimBLEService *pService;
 // Create a custom characteristic
 NimBLECharacteristic *pCharacteristic;
 
-
-void setup_ble_peripheral();
-void send_ble_data_str (const char* str);
-// void update_ble();
-int disconnect_all_clients();
-bool disable_advertising();
-void parseFunctionBLE (const char* data);
-void parseFunctionUART (const char* data);
-bool stringNotEmpty (String mystr);
+// Advertising object
+NimBLEAdvertising *pAdvertising;
 
 bool deviceConnected = false;  // Reflects whether there is a device connected or not
 bool advertising = false;  // Reflects whether we are advertising or not
 bool oldDeviceConnected = false;
 char txValue = 0;
 
-/* U2UXD */
-// const int readPin = 16; // Use GPIO number. See ESP32 board pinouts
+
+/* Function prototypes */
+void setup_ble_peripheral();
+void send_ble_data_str (const char* str);
+// void update_ble();
+int disconnect_all_clients();
+bool disable_advertising();
+void parseFunctionBLE (const char* data);
+void parseFunctionUART (String data);
+bool stringNotEmpty (String mystr);
+bool write_device_name_to_eeprom();
+void attempt_restore_device_name();
+String getParameter(String inputString);
+
+
+/* U2UXD  GPIO on ESP32dev board */
+// const int readPin = 16; 
 // const int writePin = 17; // Use GPIO number. See ESP32 board pinouts
-// const int readPin = 7; // For seeed studio ESP32C3
-// const int writePin = 6; // For seeed studio ESP32C3
 
 HardwareSerial MySerial(0);  // For seeed studio ESP32C3
 
@@ -111,7 +124,7 @@ class MyServerCallbacks: public NimBLEServerCallbacks {
     
     void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) {
         printf("Client disconnected - start advertising\n");
-        NimBLEDevice::startAdvertising();
+        if (DEFAULT_ADVERTISING) {NimBLEDevice::startAdvertising();}
     };
 
     // void onMTUChange(uint16_t MTU, NimBLEConnInfo& connInfo) {
@@ -151,16 +164,26 @@ class MyCallbacks : public NimBLECharacteristicCallbacks
 
 
 void setup() {
-  /* Monitor UART0 for debugging */
-  Serial.begin(115200);
+    /* Monitor UART0 for debugging */
+    Serial.begin(115200);
 
+    // Wait for serial monitor to open
+    while(!Serial);    
+    delay (1000);
 
-  /* UART2 is used as a bridge to send/receive data over BLE */
-  MySerial.begin(9600, SERIAL_8N1, RX, TX);   // AKA GPIO D7 and D6 on the Seeed Studio ESP32C3
+    /* UART2 is used as a bridge to send/receive data over BLE */
+    MySerial.begin(9600, SERIAL_8N1, RX, TX);   // AKA GPIO D7 and D6 on the Seeed Studio ESP32C3
 
-  setup_ble_peripheral();
-  Serial.println("Waiting for client connection...");
+    EEPROM.begin(512);  // Initialize EEPROM
+
+    // Attempt to restore the saved deviceName from EEPROM.  If it doesn't exist, use the default
+    attempt_restore_device_name();
+
+    setup_ble_peripheral();
+    Serial.println("Waiting for client connection...");
 }
+
+
 
 void loop() {
 
@@ -191,7 +214,9 @@ void loop() {
     // read from port 1, send to port 0:
     if (MySerial.available()) {
     str.concat(MySerial.readStringUntil('\r'));
-
+    // At this point we will have a complete line, so remove any newline or carriage returns
+    str.replace("\r", "");  
+    str.replace("\n", "");
     // Serial.println("Got:" + c);  // Echo the character to the console (for debugging
     Serial.println("Got:" + str);  // Echo the character to the console (for debugging
     // if (c == '\n') {  // If we have a complete line, let's look at it
@@ -261,20 +286,28 @@ void setup_ble_peripheral()
     // Start the service
     pService->start();
 
-    // Start advertising the service
-    NimBLEAdvertising *pAdvertising = NimBLEDevice::getAdvertising();
+    // Setup advertising the service
+    // NimBLEAdvertising *pAdvertising = NimBLEDevice::getAdvertising();
+    pAdvertising = NimBLEDevice::getAdvertising();
     pAdvertising->addServiceUUID(SERVICE_UUID);
     pAdvertising->setName(deviceName);
     pAdvertising->setScanResponse(true);
     pAdvertising->setMinPreferred(0x06);
     pAdvertising->setMinPreferred(0x12);
-    advertising = NimBLEDevice::startAdvertising();
+    // This is no longer necessarily started by default, it can be enabled with AT+ADTY0
+    if (DEFAULT_ADVERTISING) {
+        advertising = NimBLEDevice::startAdvertising();
+    }
 
 
 }
 
-/* Parses and acts on any in-band AT commands received at the UART.  Otherwise, sends any actual data on to BLE */
-void parseFunctionUART (const char* data)
+/* Parses and acts on any in-band AT commands received at the UART.  
+ * Otherwise, sends any actual data on to BLE 
+ * Please ensure strings passed are already free of any newline or carriage returns
+*/
+
+void parseFunctionUART (String data)
 {
     Serial.print("parseFunctionUART() Received: ");
     Serial.println(data);
@@ -286,39 +319,73 @@ void parseFunctionUART (const char* data)
 
     
     /* See if this is an AT command */    
-    if (strncmp(data, "AT", 2) == 0) {
+    // if (strncmp(data, "AT", 2) == 0) {
+    if (data.startsWith("AT+")) {
                 
-        if (strncmp(data, "AT+ADTY0", 8) == 0) {
+        // if (strncmp(data, "AT+ADTY0", 8) == 0) {
+        if (data == "AT+ADTY0") {
             
             Serial.println("Request advertise start");
             advertising = NimBLEDevice::startAdvertising();
             send_ble_data_str("OK+Set:0");
         }
 
-        if (strncmp(data, "AT+ADTY1", 8) == 0) {
-            
+        // if (strncmp(data, "AT+ADTY", 7) == 0) {
+        if (data == "AT+ADTY") {
+            Serial.println("Get advertising state");
+            advertising = pAdvertising->isAdvertising();
+            send_ble_data_str("OK+Get:" + (int) advertising);
+        }
+
+
+        // if (strncmp(data, "AT+ADTY1", 8) == 0) {
+        if (data == "AT+ADTY1") {            
             Serial.println("Request advertise stop");
             advertising = NimBLEDevice::stopAdvertising();
             send_ble_data_str("OK+Set:1");
         }
 
-        if (strncmp(data, "AT+ADDR?", 8) == 0) {
-            
+        // if (strncmp(data, "AT+ADDR?", 8) == 0) {
+        if (data == "AT+ADDR?") {            
             Serial.println("Request server address");
             String buffer = "OK+ADDR:";
             buffer.concat(NimBLEDevice::getAddress().toString().c_str());
             send_ble_data_str(buffer.c_str());
         }
 
-        if (strncmp(data, "AT+NAME?", 8) == 0) {
-            
+        // If the string  ends with a question mark, then it's a get command
+        if (data == ("AT+NAME?")) {
             Serial.println("Request server name");
             String buffer = "OK+NAME:";
             buffer.concat(deviceName);
             send_ble_data_str(buffer.c_str());
         }
 
-        else {
+        // Otherwise it is a set command, such as AT+NAMENewName
+        else if (data.startsWith("AT+NAME")) {
+
+            strcpy (deviceName, getParameter(data).c_str());
+            Serial.print("Request set server name to: ");
+            Serial.println (deviceName);
+
+            // Write this to EEPROM
+            if (write_device_name_to_eeprom()) {
+            
+                // Send ack
+                String ackstring = "OK+Set:";
+                ackstring.concat(deviceName);
+                send_ble_data_str(ackstring.c_str());
+            
+                // May need to reboot here
+                ESP.restart();
+            }
+            else {
+                send_ble_data_str("ERROR+Set:Name");
+            }
+        }
+
+        // If the string is just AT by itself, this is the disconnect all command
+        else if (data == "AT") {
             // Disconnect command
             deviceConnected = disconnect_all_clients();
         }
@@ -326,7 +393,7 @@ void parseFunctionUART (const char* data)
 
     else {
         /* Not an AT command, pass this data through to the BLE TX */
-        send_ble_data_str(data);
+        send_ble_data_str(data.c_str());
     }
 }
 
@@ -403,4 +470,66 @@ bool stringNotEmpty (String mystr)
         }
     }
   return false;
+}
+
+
+/* Helper function that returns the parameter of a command */
+String getParameter(String inputString) {
+    String outputString = inputString.substring(7);
+
+  Serial.println ("getParameter() Returning: " + outputString);
+  return outputString;
+}
+
+bool write_device_name_to_eeprom() {
+    Serial.println("write_device_name_to_eeprom() Writing device name to EEPROM");
+    for (int i = 0; i < strlen(deviceName); i++) {
+      EEPROM.write(DEVICE_NAME_ADDRESS + i, deviceName[i]);
+    }
+    // Terminate the string
+    EEPROM.write (DEVICE_NAME_ADDRESS + strlen(deviceName), 0);
+    EEPROM.commit();
+
+    // Verify the write was successful by reading it back and comparing
+    for (int i = 0; i < strlen(deviceName); i++) {
+      if (EEPROM.read(DEVICE_NAME_ADDRESS + i) != deviceName[i]) {
+        Serial.println("write_device_name_to_eeprom() Error writing to EEPROM");
+        break;
+        return false;
+      }
+    }
+
+    return true;
+
+}
+
+/* attempts to restore device name from EEPROM. */
+void attempt_restore_device_name() {
+
+    Serial.println("attempt_restore_device_name() Restoring device name from EEPROM");
+
+    // Read it in and if there are invalid characters, then use the default name 
+    for (int i = DEVICE_NAME_ADDRESS; i < DEVICE_NAME_LENGTH; i++) {
+        deviceName[i] = EEPROM.read(i);
+
+        // Stop if we've reached the end of the string
+        if (deviceName[i] == 0) {            
+            break;
+        }
+
+        // Stop and use default name if we find an invalid character
+        if (!isalnum(deviceName[i]) && deviceName[i] != '-' && deviceName[i] != '_' && deviceName[i] != '+') {
+            Serial.print("attempt_restore_device_name() Invalid character found in EEPROM:");
+            Serial.print(deviceName[i]);
+            Serial.println(" so using default name");
+            strcpy(deviceName, DEFAULT_DEVICE_NAME);
+            break;
+        }
+    }
+
+    // If the length is zero, the restore was not successful.. use the default name
+    if (strlen(deviceName) == 0) {
+        Serial.println("attempt_restore_device_name() No name found in EEPROM, using default name");
+        strcpy(deviceName, DEFAULT_DEVICE_NAME);
+    }
 }
