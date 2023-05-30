@@ -32,6 +32,7 @@ This attempts to support a subset of commands familiar to the HM-18/HM-19. For m
 
 `AT+ADDR?` (get address)
 
+`AT+VERS?` or `AT+VERR?` (get version info)
 
 
 ## Known issues

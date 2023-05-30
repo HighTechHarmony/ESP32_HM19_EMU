@@ -16,6 +16,7 @@
 #include <HardwareSerial.h>
 #include <EEPROM.h>
 
+#define VERSION "LEDdynamics HM-18/HM-19 BLE UART v1.0.0 20230530-02"
 
 // UUID for the custom service and characteristics
 #define SERVICE_UUID "ffe0"
@@ -75,33 +76,6 @@ String getParameter(String inputString);
 // const int writePin = 17; // Use GPIO number. See ESP32 board pinouts
 
 HardwareSerial MySerial(0);  // For seeed studio ESP32C3
-
-
-// /* Callbacks for client disconnect & connect events.  */
-// class MyServerCallbacks : public NimBLEServerCallbacks {
-//     void onConnect(NimBLEServer *pServer, ble_gap_conn_desc connection_desc) 
-//     {
-//         // Print the client's BLE address to the console
-//         deviceConnected = true;
-//         MySerial.println("OK+CONN");
-//         Serial.print("Client connected. Address: ");
-//         // Serial.println(clientAddressString.c_str());
-//         Serial.println(NimBLEAddress(connection_desc.peer_ota_addr).toString().c_str());
-
-//     };
-
-//     void onDisconnect(NimBLEServer *pServer, ble_gap_conn_desc connection_desc) 
-//     {
-//         deviceConnected = false;
-//         // Print the client's BLE address to the console
-//         MySerial.println("OK+LOST");
-//         Serial.print("Client disconnected. Address: ");
-//         // Serial.println(clientAddressString.c_str());
-//         Serial.println(NimBLEAddress(connection_desc.peer_ota_addr).toString().c_str());        
-        
-//     };
-    
-// };
 
 
 /* Unfortunately, none of this stuff actually works.  The Server callbacks are never called. I wasn't able to figure out
@@ -207,50 +181,19 @@ void loop() {
     }
 
     /* Get data from the UART, parse it, and send it to BLE   */
-    // while (MySerial.available()) {
-    // Apparently MySerial.read() can be told to return only one character at time 
-    // based on the type of the variable it is assigned to, who knew?
-    // char c = MySerial.read();
-    // read from port 1, send to port 0:
+    
     if (MySerial.available()) {
     str.concat(MySerial.readStringUntil('\r'));
     // At this point we will have a complete line, so remove any newline or carriage returns
     str.replace("\r", "");  
-    str.replace("\n", "");
-    // Serial.println("Got:" + c);  // Echo the character to the console (for debugging
-    Serial.println("Got:" + str);  // Echo the character to the console (for debugging
-    // if (c == '\n') {  // If we have a complete line, let's look at it
-    //   if (data.length() > 0) {
-        // Serial.println("Read from UART: " + data);
-        // parseFunctionUART(data.c_str());  // Parse the data and (possibly) send it to BLE        
-        parseFunctionUART(str.c_str());  // Parse the data and (possibly) send it to BLE
-        // data = "";  // Clear the buffer
-        str = "";  // Clear the buffer
-
-        delay(10); // Just a safeguard, as bluetooth stack could go into congestion, if too many packets are sent
+    str.replace("\n", "");    
+    Serial.println("UART:" + str);  // Echo the character to the console (for debugging    
+    parseFunctionUART(str.c_str());  // Parse the data and (possibly) send it to BLE
+    str = "";  // Clear the buffer
+    delay(10); // Just a safeguard, as bluetooth stack could go into congestion, if too many packets are sent
     }
       
-//       data = "";  // Nothing of interest, clear the buffer and move on
-//     } else {
-//       data += c;  // Append this character to the buffer string
-//     }
-//   }
-      
-    
-	// }
-
-    // else {
-    //     Serial.println("No device connected");
-    //     Serial.print ("getConnectedCount(): ");
-    //     Serial.println (pServer->getConnectedCount());
-
-    //     delay(1000);
-    // }
-
 }
-
-
-
 
 
 
@@ -350,6 +293,13 @@ void parseFunctionUART (String data)
             Serial.println("Request server address");
             String buffer = "OK+ADDR:";
             buffer.concat(NimBLEDevice::getAddress().toString().c_str());
+            send_ble_data_str(buffer.c_str());
+        }
+
+        if (data == "AT+VERS?" || data == "AT+VERR?") {
+            Serial.println ("Request server version");
+            String buffer = "OK+VERS:";
+            buffer.concat(VERSION);
             send_ble_data_str(buffer.c_str());
         }
 
